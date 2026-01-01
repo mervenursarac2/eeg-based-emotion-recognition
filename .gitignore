@@ -1,0 +1,9 @@
+# Büyük veri dosyalarını yoksay
+*.bdf
+raw/
+data_preprocessed_python/
+
+# Python geçici dosyaları
+__pycache__/
+*.pyc
+.venv/
