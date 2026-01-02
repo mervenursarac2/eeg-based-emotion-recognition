@@ -4,6 +4,8 @@ import matplotlib
 import matplotlib.pyplot as plt
 import mne
 import mne.io #ham verileri okumaktan sorumlu olan modül
+from mne.preprocessing import ICA
+
 matplotlib.use('Qt5Agg')  # kanal gizleme işaretleme kaydırma gibi etkileşimli grafikler oluşturabilmeyi sağlar
 
 #veri okuma
@@ -13,7 +15,7 @@ raw_data = mne.io.read_raw_bdf( #bdf formatını okumak için olan fonksiyon
     preload = True, # verinin tamamını belleğe yükler ve işlemi hızlandırır
 )
 
-print("data uploaded")
+print("data loaded")
 print(raw_data)
 
 
@@ -25,6 +27,72 @@ print("filtering finish")
 
 #downsampling
 raw_data.resample(128) # Örnek: 128Hz'e düşür
+print("resampled to 128 Hz")
+
+raw_data.set_channel_types({
+    'EXG1': 'eog', 'EXG2': 'eog', 'EXG3': 'eog', 'EXG4': 'eog',
+    'EXG5': 'eog', 'EXG6': 'eog', 'EXG7': 'eog', 'EXG8': 'eog',
+    'GSR1': 'misc', 'GSR2': 'misc',
+    'Erg1': 'misc', 'Erg2': 'misc',
+    'Resp': 'misc',
+    'Plet': 'misc',
+    'Temp': 'misc'
+})
+ 
+# --------------------------------------------------
+# MONTAGE (KANAL KONUMU) EKLE
+# --------------------------------------------------
+montage = mne.channels.make_standard_montage("standard_1020")
+raw_data.set_montage(montage, on_missing='ignore')
+
+
+picks_eeg = mne.pick_types(
+    raw_data.info,
+    eeg=True,
+    eog=False,
+    stim=False,
+    exclude='bads'
+)
+
+
+# ICA modeli
+ica = ICA(
+    n_components=20,
+    random_state=97,
+    method='fastica',
+    max_iter='auto'
+)
+
+
+# ICA fit
+ica.fit(raw_data, picks=picks_eeg)
+
+# Otomatik EOG tespiti
+eog_indices, eog_scores = ica.find_bads_eog(
+    raw_data,
+    ch_name=['EXG1', 'EXG2']
+)
+
+print("Otomatik bulunan EOG componentleri:", eog_indices)
+
+# Otomatik bulunanlar varsa incele
+if len(eog_indices) > 0:
+    ica.plot_properties(raw_data, picks=eog_indices)
+else:
+    print("Otomatik EOG componenti bulunamadı.")
+
+# Tüm componentleri görsel inceleme
+ica.plot_components()
+
+# ================
+# MANUEL KARAR
+# ================
+# örnek: [0, 3] göz/kas gibi göründüyse
+ica.exclude = eog_indices  # ya da manuel ekle: [0, 3]
+
+# ICA uygula
+raw_clean = ica.apply(raw_data.copy())
+
 
 # finding events (yalnızca event başlangıçları)
 events = mne.find_events(raw_data, stim_channel='Status')
@@ -45,7 +113,7 @@ trial_events = np.array(trial_events)
 print("trial number:", len(trial_events))  
 
 #yalnızca eeg kanallarını istiyoruz
-raw_data.pick(picks='eeg')
+# raw_data.pick(picks='eeg')
 
 
 #epochlar ve baseline temizliği-
